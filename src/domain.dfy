@@ -4,6 +4,8 @@ datatype DiffRow = DiffRow(repo: string, oldCount: int, newCount: int, diff: int
 
 datatype DiffReport = DiffReport(rows: seq<DiffRow>, totalDiff: int)
 
+datatype Decomposition = Decomposition(increases: seq<DiffRow>, decreases_: seq<DiffRow>, same: seq<DiffRow>)
+
 function sumDiffs(rows: seq<DiffRow>): int
   decreases |rows|
 {
@@ -13,9 +15,88 @@ function sumDiffs(rows: seq<DiffRow>): int
     (rows[0].diff + sumDiffs(rows[1..]))
 }
 
-// Proof addition: sumDiffs distributes over right-append. Needed for the
-// `total == sumDiffs(rows)` loop invariant in computeDiff, where each
-// iteration extends rows by one element.
+function countPositiveUpTo(rows: seq<DiffRow>, n: nat): int
+  requires (n <= |rows|)
+  decreases n
+{
+  if (n == 0) then
+    0
+  else
+    (countPositiveUpTo(rows, (n - 1)) + (if (rows[(n - 1)].diff > 0) then 1 else 0))
+}
+
+lemma countPositiveUpTo_ensures(rows: seq<DiffRow>, n: nat)
+  requires (n <= |rows|)
+  ensures (countPositiveUpTo(rows, n) >= 0)
+  ensures (countPositiveUpTo(rows, n) <= n)
+{
+}
+
+function countNegativeUpTo(rows: seq<DiffRow>, n: nat): int
+  requires (n <= |rows|)
+  decreases n
+{
+  if (n == 0) then
+    0
+  else
+    (countNegativeUpTo(rows, (n - 1)) + (if (rows[(n - 1)].diff < 0) then 1 else 0))
+}
+
+lemma countNegativeUpTo_ensures(rows: seq<DiffRow>, n: nat)
+  requires (n <= |rows|)
+  ensures (countNegativeUpTo(rows, n) >= 0)
+  ensures (countNegativeUpTo(rows, n) <= n)
+{
+}
+
+function countZeroUpTo(rows: seq<DiffRow>, n: nat): int
+  requires (n <= |rows|)
+  decreases n
+{
+  if (n == 0) then
+    0
+  else
+    (countZeroUpTo(rows, (n - 1)) + (if (rows[(n - 1)].diff == 0) then 1 else 0))
+}
+
+lemma countZeroUpTo_ensures(rows: seq<DiffRow>, n: nat)
+  requires (n <= |rows|)
+  ensures (countZeroUpTo(rows, n) >= 0)
+  ensures (countZeroUpTo(rows, n) <= n)
+{
+}
+
+function sumPositiveUpTo(rows: seq<DiffRow>, n: nat): int
+  requires (n <= |rows|)
+  decreases n
+{
+  if (n == 0) then
+    0
+  else
+    (sumPositiveUpTo(rows, (n - 1)) + (if (rows[(n - 1)].diff > 0) then rows[(n - 1)].diff else 0))
+}
+
+function sumNegativeUpTo(rows: seq<DiffRow>, n: nat): int
+  requires (n <= |rows|)
+  decreases n
+{
+  if (n == 0) then
+    0
+  else
+    (sumNegativeUpTo(rows, (n - 1)) + (if (rows[(n - 1)].diff < 0) then rows[(n - 1)].diff else 0))
+}
+
+function sumDiffsUpTo(rows: seq<DiffRow>, n: nat): int
+  requires (n <= |rows|)
+  decreases n
+{
+  if (n == 0) then
+    0
+  else
+    (sumDiffsUpTo(rows, (n - 1)) + rows[(n - 1)].diff)
+}
+
+// Proof addition: sumDiffs distributes over right-append.
 lemma SumDiffs_append(rows: seq<DiffRow>, row: DiffRow)
   ensures sumDiffs(rows + [row]) == sumDiffs(rows) + row.diff
 {
@@ -25,6 +106,55 @@ lemma SumDiffs_append(rows: seq<DiffRow>, row: DiffRow)
     assert (rows + [row])[0] == rows[0];
     assert (rows + [row])[1..] == rows[1..] + [row];
     SumDiffs_append(rows[1..], row);
+  }
+}
+
+// ─── Partition lemmas ────────────────────────────────────────────
+// Every row is in exactly one of {positive, negative, zero} sign classes, and
+// the two non-trivial sums account for the whole. Proved by induction on n.
+
+lemma CountPartitionUpTo(rows: seq<DiffRow>, n: nat)
+  requires n <= |rows|
+  ensures countPositiveUpTo(rows, n) + countNegativeUpTo(rows, n) + countZeroUpTo(rows, n) == n
+{
+  if n == 0 { } else { CountPartitionUpTo(rows, n - 1); }
+}
+
+lemma SumPartitionUpTo(rows: seq<DiffRow>, n: nat)
+  requires n <= |rows|
+  ensures sumPositiveUpTo(rows, n) + sumNegativeUpTo(rows, n) == sumDiffsUpTo(rows, n)
+{
+  if n == 0 { } else { SumPartitionUpTo(rows, n - 1); }
+}
+
+// Bridge: `sumDiffs` (tail-recursive on rows[1..]) equals `sumDiffsUpTo(_, |rows|)`.
+lemma SumDiffs_eq_UpTo(rows: seq<DiffRow>)
+  ensures sumDiffs(rows) == sumDiffsUpTo(rows, |rows|)
+{
+  if |rows| == 0 { } else {
+    SumDiffs_eq_UpTo(rows[1..]);
+    SumDiffsUpTo_shift(rows);
+  }
+}
+
+lemma SumDiffsUpTo_shift(rows: seq<DiffRow>)
+  requires |rows| > 0
+  ensures sumDiffsUpTo(rows, |rows|) == rows[0].diff + sumDiffsUpTo(rows[1..], |rows| - 1)
+{
+  if |rows| == 1 {
+  } else {
+    SumDiffsUpTo_prefix_agrees(rows, rows[1..], |rows| - 1);
+    assert rows[1..][|rows| - 2] == rows[|rows| - 1];
+  }
+}
+
+lemma SumDiffsUpTo_prefix_agrees(rs: seq<DiffRow>, rt: seq<DiffRow>, n: nat)
+  requires |rs| >= 1 && rt == rs[1..] && 1 <= n <= |rs|
+  ensures sumDiffsUpTo(rs, n) == rs[0].diff + sumDiffsUpTo(rt, n - 1)
+{
+  if n == 1 { } else {
+    SumDiffsUpTo_prefix_agrees(rs, rt, n - 1);
+    assert rt[n - 2] == rs[n - 1];
   }
 }
 
@@ -51,12 +181,11 @@ method computeDiff(repos: seq<string>, oldCounts: map<string, int>, newCounts: m
     decreases (|repos| - idx)
   {
     var repo := repos[idx];
-    assert (repo in newCounts);
-    var newC := newCounts[repo];
+    var newC := (if (repo in newCounts) then newCounts[repo] else 0);
     var oldC := (if (repo in oldCounts) then oldCounts[repo] else 0);
     var diff := (newC - oldC);
     var row := DiffRow(repo, oldC, newC, diff);
-    SumDiffs_append(rows, row);  // proof addition: discharge `total == sumDiffs(rows)` step
+    SumDiffs_append(rows, row);
     rows := (rows + [row]);
     total := (total + diff);
     idx := (idx + 1);
@@ -66,24 +195,111 @@ method computeDiff(repos: seq<string>, oldCounts: map<string, int>, newCounts: m
 
 method extractIncreases(report: DiffReport) returns (res: seq<DiffRow>)
   ensures (|res| <= |report.rows|)
+  ensures (|res| == countPositiveUpTo(report.rows, |report.rows|))
+  ensures (sumDiffs(res) == sumPositiveUpTo(report.rows, |report.rows|))
   ensures forall j: nat :: ((j < |res|) ==> (res[j].diff > 0))
   ensures forall k: nat :: ((k < |report.rows|) ==> (report.rows[k].diff > 0) ==> exists j: nat :: ((j < |res|) && (res[j] == report.rows[k])))
+  ensures forall k1: nat, k2: nat :: ((k1 < k2) ==> (k2 < |report.rows|) ==> (report.rows[k1].diff > 0) ==> (report.rows[k2].diff > 0) ==> exists j1: nat, j2: nat :: ((((j1 < j2) && (j2 < |res|)) && (res[j1] == report.rows[k1])) && (res[j2] == report.rows[k2])))
 {
   var out: seq<DiffRow> := [];
   var i := 0;
   while (i < |report.rows|)
     invariant (i <= |report.rows|)
     invariant (|out| <= i)
+    invariant (|out| == countPositiveUpTo(report.rows, i))
+    invariant (sumDiffs(out) == sumPositiveUpTo(report.rows, i))
     invariant forall j: nat :: ((j < |out|) ==> (out[j].diff > 0))
     invariant forall k: nat :: ((k < i) ==> (report.rows[k].diff > 0) ==> exists j: nat :: ((j < |out|) && (out[j] == report.rows[k])))
+    invariant forall k1: nat, k2: nat :: ((k1 < k2) ==> (k2 < i) ==> (report.rows[k1].diff > 0) ==> (report.rows[k2].diff > 0) ==> exists j1: nat, j2: nat :: ((((j1 < j2) && (j2 < |out|)) && (out[j1] == report.rows[k1])) && (out[j2] == report.rows[k2])))
     decreases (|report.rows| - i)
   {
-    // Proof addition: re-establish the completeness invariant across this step.
-    // Seq-append preserves the prefix, so for k < i the j-witness from the prior
-    // invariant still indexes into an (extended) out. For k == i, the witness is
-    // |out_old| when we appended, or there is no obligation (premise false).
     ghost var out_old := out;
     if (report.rows[i].diff > 0) {
+      SumDiffs_append(out, report.rows[i]);
+      out := (out + [report.rows[i]]);
+      assert out[|out_old|] == report.rows[i];
+    }
+    assert forall j: nat :: j < |out_old| ==> out[j] == out_old[j];
+    i := (i + 1);
+  }
+  return out;
+}
+
+method extractDecreases(report: DiffReport) returns (res: seq<DiffRow>)
+  ensures (|res| <= |report.rows|)
+  ensures (|res| == countNegativeUpTo(report.rows, |report.rows|))
+  ensures (sumDiffs(res) == sumNegativeUpTo(report.rows, |report.rows|))
+  ensures forall j: nat :: ((j < |res|) ==> (res[j].diff < 0))
+  ensures forall k: nat :: ((k < |report.rows|) ==> (report.rows[k].diff < 0) ==> exists j: nat :: ((j < |res|) && (res[j] == report.rows[k])))
+  ensures forall k1: nat, k2: nat :: ((k1 < k2) ==> (k2 < |report.rows|) ==> (report.rows[k1].diff < 0) ==> (report.rows[k2].diff < 0) ==> exists j1: nat, j2: nat :: ((((j1 < j2) && (j2 < |res|)) && (res[j1] == report.rows[k1])) && (res[j2] == report.rows[k2])))
+{
+  var out: seq<DiffRow> := [];
+  var i := 0;
+  while (i < |report.rows|)
+    invariant (i <= |report.rows|)
+    invariant (|out| <= i)
+    invariant (|out| == countNegativeUpTo(report.rows, i))
+    invariant (sumDiffs(out) == sumNegativeUpTo(report.rows, i))
+    invariant forall j: nat :: ((j < |out|) ==> (out[j].diff < 0))
+    invariant forall k: nat :: ((k < i) ==> (report.rows[k].diff < 0) ==> exists j: nat :: ((j < |out|) && (out[j] == report.rows[k])))
+    invariant forall k1: nat, k2: nat :: ((k1 < k2) ==> (k2 < i) ==> (report.rows[k1].diff < 0) ==> (report.rows[k2].diff < 0) ==> exists j1: nat, j2: nat :: ((((j1 < j2) && (j2 < |out|)) && (out[j1] == report.rows[k1])) && (out[j2] == report.rows[k2])))
+    decreases (|report.rows| - i)
+  {
+    ghost var out_old := out;
+    if (report.rows[i].diff < 0) {
+      SumDiffs_append(out, report.rows[i]);
+      out := (out + [report.rows[i]]);
+      assert out[|out_old|] == report.rows[i];
+    }
+    assert forall j: nat :: j < |out_old| ==> out[j] == out_old[j];
+    i := (i + 1);
+  }
+  return out;
+}
+
+method decompose(report: DiffReport) returns (res: Decomposition)
+  requires (report.totalDiff == sumDiffs(report.rows))
+  ensures (((|res.increases| + |res.decreases_|) + |res.same|) == |report.rows|)
+  ensures ((sumDiffs(res.increases) + sumDiffs(res.decreases_)) == report.totalDiff)
+  ensures (sumDiffs(res.same) == 0)
+{
+  var i_t0 := extractIncreases(report);
+  var increases := i_t0;
+  var i_t1 := extractDecreases(report);
+  var decreases_ := i_t1;
+  var i_t2 := extractUnchanged(report);
+  var same := i_t2;
+  // Proof additions: partition lemmas + sumDiffs bridge combine the extractors'
+  // upTo-indexed ensures into the conservation claims in the overall ensures.
+  CountPartitionUpTo(report.rows, |report.rows|);
+  SumPartitionUpTo(report.rows, |report.rows|);
+  SumDiffs_eq_UpTo(report.rows);
+  return Decomposition(increases, decreases_, same);
+}
+
+method extractUnchanged(report: DiffReport) returns (res: seq<DiffRow>)
+  ensures (|res| <= |report.rows|)
+  ensures (|res| == countZeroUpTo(report.rows, |report.rows|))
+  ensures (sumDiffs(res) == 0)
+  ensures forall j: nat :: ((j < |res|) ==> (res[j].diff == 0))
+  ensures forall k: nat :: ((k < |report.rows|) ==> (report.rows[k].diff == 0) ==> exists j: nat :: ((j < |res|) && (res[j] == report.rows[k])))
+  ensures forall k1: nat, k2: nat :: ((k1 < k2) ==> (k2 < |report.rows|) ==> (report.rows[k1].diff == 0) ==> (report.rows[k2].diff == 0) ==> exists j1: nat, j2: nat :: ((((j1 < j2) && (j2 < |res|)) && (res[j1] == report.rows[k1])) && (res[j2] == report.rows[k2])))
+{
+  var out: seq<DiffRow> := [];
+  var i := 0;
+  while (i < |report.rows|)
+    invariant (i <= |report.rows|)
+    invariant (|out| <= i)
+    invariant (|out| == countZeroUpTo(report.rows, i))
+    invariant (sumDiffs(out) == 0)
+    invariant forall j: nat :: ((j < |out|) ==> (out[j].diff == 0))
+    invariant forall k: nat :: ((k < i) ==> (report.rows[k].diff == 0) ==> exists j: nat :: ((j < |out|) && (out[j] == report.rows[k])))
+    invariant forall k1: nat, k2: nat :: ((k1 < k2) ==> (k2 < i) ==> (report.rows[k1].diff == 0) ==> (report.rows[k2].diff == 0) ==> exists j1: nat, j2: nat :: ((((j1 < j2) && (j2 < |out|)) && (out[j1] == report.rows[k1])) && (out[j2] == report.rows[k2])))
+    decreases (|report.rows| - i)
+  {
+    ghost var out_old := out;
+    if (report.rows[i].diff == 0) {
+      SumDiffs_append(out, report.rows[i]);
       out := (out + [report.rows[i]]);
       assert out[|out_old|] == report.rows[i];
     }
