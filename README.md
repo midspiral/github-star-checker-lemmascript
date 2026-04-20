@@ -51,7 +51,7 @@ Sign-classified extractors (`extractIncreases`, `extractDecreases`, `extractUnch
 - **Sum equality:** `sumDiffs(\result) === sumPositiveUpTo(report.rows, |rows|)` for ±; `sumDiffs(unchanged) === 0` by soundness.
 - **Soundness:** every output row has the expected sign.
 - **Completeness:** every input row with the expected sign appears in the output.
-- **Ordered completeness:** pairs of same-sign input rows keep their relative order in the output — notifications never scramble repo order.
+- **Ordered completeness:** gainers appear in the notification in the same order they were listed on the command line — e.g. `stars foo/A foo/B foo/C` with gains on A and C produces `"foo/A +N, foo/C +M"`, never the reverse.
 
 Conservation / partition (`decompose`):
 - `|increases| + |decreases| + |unchanged| === |report.rows|` — every row is in exactly one class.

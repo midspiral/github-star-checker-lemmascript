@@ -46,7 +46,7 @@ Each extractor (6 ensures × 3 extractors):
 - **Sum equality** `sumDiffs(res) === sumXUpTo(rows, |rows|)` (for ±; unchanged's sum is 0 by soundness).
 - **Soundness** every output row has the expected sign.
 - **Completeness** every input row with the expected sign appears in the output.
-- **Ordered completeness** same-sign rows preserve relative input order — pairs `k1 < k2` with matching signs witness ordered `j1 < j2` in the output.
+- **Ordered completeness** same-sign rows appear in the output in the same order they were listed on the command line — pairs `k1 < k2` with matching signs witness ordered `j1 < j2` in the output.
 
 `decompose` (conservation, 3 ensures):
 - `|increases| + |decreases| + |same| === |report.rows|` — every row in exactly one class.
