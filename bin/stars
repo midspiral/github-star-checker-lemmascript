@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Run the star checker from anywhere
+# Usage: stars owner/repo1 owner/repo2 ...
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$DIR" && npx tsx src/cli.ts "$@"

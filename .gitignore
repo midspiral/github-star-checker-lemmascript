@@ -1,0 +1,20 @@
+node_modules
+.stars-state.json
+
+# LemmaScript regen artifacts (ephemeral — .dfy.base is the merge-base
+# anchor, .dfy.merged is produced on merge conflict)
+*.dfy.base
+*.dfy.merged
+
+# Dafny verifier scratch
+*.dtr
+.dafny
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode
+.idea
+*.swp
+LS_TODO.md
