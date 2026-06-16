@@ -97,6 +97,7 @@ export function computeDiff(
   oldCounts: Record<string, number>,
   newCounts: Record<string, number>,
 ): DiffReport {
+  //@ contract Builds one diff row per repo in input order — each row's new and old counts come from the maps (old defaulting to 0), its diff is new minus old, and the report's total equals the sum of all row diffs.
   //@ requires forall(i: nat, i < repos.length ==> repos[i] in newCounts)
   //@ ensures \result.rows.length === repos.length
   //@ ensures forall(i: nat, i < \result.rows.length ==> \result.rows[i].repo === repos[i])
@@ -140,6 +141,7 @@ export function computeDiff(
 //   - length bound (no row is invented — |out| ≤ |rows|)
 
 export function extractIncreases(report: DiffReport): DiffRow[] {
+  //@ contract Returns exactly the rows that gained stars (diff > 0), in their original order — every output gained (sound), every gainer appears (complete), relative order is preserved, no row is invented, and the count and diff-sum match the positive totals.
   //@ ensures \result.length <= report.rows.length
   //@ ensures \result.length === countPositiveUpTo(report.rows, report.rows.length)
   //@ ensures sumDiffs(\result) === sumPositiveUpTo(report.rows, report.rows.length)
@@ -168,6 +170,7 @@ export function extractIncreases(report: DiffReport): DiffRow[] {
 }
 
 export function extractDecreases(report: DiffReport): DiffRow[] {
+  //@ contract Returns exactly the rows that lost stars (diff < 0), in their original order — sound, complete, order-preserving, none invented, and the count and diff-sum match the negative totals.
   //@ ensures \result.length <= report.rows.length
   //@ ensures \result.length === countNegativeUpTo(report.rows, report.rows.length)
   //@ ensures sumDiffs(\result) === sumNegativeUpTo(report.rows, report.rows.length)
@@ -209,6 +212,7 @@ interface Decomposition {
 }
 
 export function decompose(report: DiffReport): Decomposition {
+  //@ contract The gained, lost, and unchanged counts sum to the total number of rows, and the gained and lost diffs together sum to the report's total (the unchanged diffs summing to zero).
   //@ requires report.totalDiff === sumDiffs(report.rows)
   //@ ensures \result.increases.length + \result.decreases.length + \result.same.length === report.rows.length
   //@ ensures sumDiffs(\result.increases) + sumDiffs(\result.decreases) === report.totalDiff
@@ -220,6 +224,7 @@ export function decompose(report: DiffReport): Decomposition {
 }
 
 export function extractUnchanged(report: DiffReport): DiffRow[] {
+  //@ contract Returns exactly the unchanged rows (diff === 0), in their original order — sound, complete, order-preserving, none invented, and their diffs sum to zero.
   //@ ensures \result.length <= report.rows.length
   //@ ensures \result.length === countZeroUpTo(report.rows, report.rows.length)
   //@ ensures sumDiffs(\result) === 0

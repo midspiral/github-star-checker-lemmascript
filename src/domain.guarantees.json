@@ -1,0 +1,110 @@
+{
+  "file": "src/domain.ts",
+  "generated": "2026-06-16",
+  "assumesVerified": true,
+  "summary": {
+    "contracts": 5,
+    "confirmed": 5,
+    "disputed": 0,
+    "gaps": 0
+  },
+  "guarantees": [
+    {
+      "specId": "computeDiff",
+      "function": "computeDiff",
+      "requirement": "Builds one diff row per repo in input order — each row's new and old counts come from the maps (old defaulting to 0), its diff is new minus old, and the report's total equals the sum of all row diffs.",
+      "spec": {
+        "signature": "computeDiff(repos: string[], oldCounts: Record<string, number>, newCounts: Record<string, number>): DiffReport",
+        "requires": [
+          "forall(i: nat, i < repos.length ==> repos[i] in newCounts)"
+        ],
+        "ensures": [
+          "\\result.rows.length === repos.length",
+          "forall(i: nat, i < \\result.rows.length ==> \\result.rows[i].repo === repos[i])",
+          "forall(i: nat, i < \\result.rows.length ==> \\result.rows[i].newCount === newCounts[repos[i]])",
+          "forall(i: nat, i < \\result.rows.length ==> \\result.rows[i].oldCount === (repos[i] in oldCounts ? oldCounts[repos[i]] : 0))",
+          "forall(i: nat, i < \\result.rows.length ==> \\result.rows[i].diff === \\result.rows[i].newCount - \\result.rows[i].oldCount)",
+          "\\result.totalDiff === sumDiffs(\\result.rows)"
+        ]
+      },
+      "status": "confirmed",
+      "backTranslation": "Given an array of repository names, a record of old counts, and a record of new counts, computeDiff returns a DiffReport where each row corresponds to a repository in the input array, with the row's repo field set to the repository name, the newCount field set to the value from newCounts for that repository, the oldCount field set to the value from oldCounts for that repository (or 0 if not present), the diff field set to the difference between newCount and oldCount, and the totalDiff field set to the sum of all individual diffs."
+    },
+    {
+      "specId": "extractIncreases",
+      "function": "extractIncreases",
+      "requirement": "Returns exactly the rows that gained stars (diff > 0), in their original order — every output gained (sound), every gainer appears (complete), relative order is preserved, no row is invented, and the count and diff-sum match the positive totals.",
+      "spec": {
+        "signature": "extractIncreases(report: DiffReport): DiffRow[]",
+        "requires": [],
+        "ensures": [
+          "\\result.length <= report.rows.length",
+          "\\result.length === countPositiveUpTo(report.rows, report.rows.length)",
+          "sumDiffs(\\result) === sumPositiveUpTo(report.rows, report.rows.length)",
+          "forall(j: nat, j < \\result.length ==> \\result[j].diff > 0)",
+          "forall(k: nat, k < report.rows.length && report.rows[k].diff > 0 ==> exists(j: nat, j < \\result.length && \\result[j] === report.rows[k]))",
+          "forall(k1: nat, forall(k2: nat, k1 < k2 && k2 < report.rows.length && report.rows[k1].diff > 0 && report.rows[k2].diff > 0 ==> exists(j1: nat, exists(j2: nat, j1 < j2 && j2 < \\result.length && \\result[j1] === report.rows[k1] && \\result[j2] === report.rows[k2]))))"
+        ]
+      },
+      "status": "confirmed",
+      "backTranslation": "Given a DiffReport, extractIncreases returns an array containing exactly those rows from the report where the diff is positive, preserving their relative order from the original report, with the sum of diffs in the result equal to the sum of all positive diffs in the report."
+    },
+    {
+      "specId": "extractDecreases",
+      "function": "extractDecreases",
+      "requirement": "Returns exactly the rows that lost stars (diff < 0), in their original order — sound, complete, order-preserving, none invented, and the count and diff-sum match the negative totals.",
+      "spec": {
+        "signature": "extractDecreases(report: DiffReport): DiffRow[]",
+        "requires": [],
+        "ensures": [
+          "\\result.length <= report.rows.length",
+          "\\result.length === countNegativeUpTo(report.rows, report.rows.length)",
+          "sumDiffs(\\result) === sumNegativeUpTo(report.rows, report.rows.length)",
+          "forall(j: nat, j < \\result.length ==> \\result[j].diff < 0)",
+          "forall(k: nat, k < report.rows.length && report.rows[k].diff < 0 ==> exists(j: nat, j < \\result.length && \\result[j] === report.rows[k]))",
+          "forall(k1: nat, forall(k2: nat, k1 < k2 && k2 < report.rows.length && report.rows[k1].diff < 0 && report.rows[k2].diff < 0 ==> exists(j1: nat, exists(j2: nat, j1 < j2 && j2 < \\result.length && \\result[j1] === report.rows[k1] && \\result[j2] === report.rows[k2]))))"
+        ]
+      },
+      "status": "confirmed",
+      "backTranslation": "Given a DiffReport, extractDecreases returns an array containing exactly those rows from the report where the diff is negative, preserving their relative order from the original report, with the sum of diffs in the result equal to the sum of all negative diffs in the report."
+    },
+    {
+      "specId": "decompose",
+      "function": "decompose",
+      "requirement": "The gained, lost, and unchanged counts sum to the total number of rows, and the gained and lost diffs together sum to the report's total (the unchanged diffs summing to zero).",
+      "spec": {
+        "signature": "decompose(report: DiffReport): Decomposition",
+        "requires": [
+          "report.totalDiff === sumDiffs(report.rows)"
+        ],
+        "ensures": [
+          "\\result.increases.length + \\result.decreases.length + \\result.same.length === report.rows.length",
+          "sumDiffs(\\result.increases) + sumDiffs(\\result.decreases) === report.totalDiff",
+          "sumDiffs(\\result.same) === 0"
+        ]
+      },
+      "status": "confirmed",
+      "backTranslation": "Given a DiffReport whose totalDiff equals the sum of its rows' diffs, decompose returns a Decomposition where the increases, decreases, and same arrays partition the report's rows, the sum of diffs in increases and decreases equals the report's totalDiff, and the sum of diffs in the same array equals zero."
+    },
+    {
+      "specId": "extractUnchanged",
+      "function": "extractUnchanged",
+      "requirement": "Returns exactly the unchanged rows (diff === 0), in their original order — sound, complete, order-preserving, none invented, and their diffs sum to zero.",
+      "spec": {
+        "signature": "extractUnchanged(report: DiffReport): DiffRow[]",
+        "requires": [],
+        "ensures": [
+          "\\result.length <= report.rows.length",
+          "\\result.length === countZeroUpTo(report.rows, report.rows.length)",
+          "sumDiffs(\\result) === 0",
+          "forall(j: nat, j < \\result.length ==> \\result[j].diff === 0)",
+          "forall(k: nat, k < report.rows.length && report.rows[k].diff === 0 ==> exists(j: nat, j < \\result.length && \\result[j] === report.rows[k]))",
+          "forall(k1: nat, forall(k2: nat, k1 < k2 && k2 < report.rows.length && report.rows[k1].diff === 0 && report.rows[k2].diff === 0 ==> exists(j1: nat, exists(j2: nat, j1 < j2 && j2 < \\result.length && \\result[j1] === report.rows[k1] && \\result[j2] === report.rows[k2]))))"
+        ]
+      },
+      "status": "confirmed",
+      "backTranslation": "Given a DiffReport, extractUnchanged returns an array containing exactly those rows from the report where the diff is zero, preserving their relative order from the original report, with the sum of diffs in the result equal to zero."
+    }
+  ],
+  "gaps": []
+}
