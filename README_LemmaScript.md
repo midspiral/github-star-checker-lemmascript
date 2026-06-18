@@ -1,5 +1,8 @@
 # github-star-checker — Verified with LemmaScript
 
+[![LemmaScript: verified](https://img.shields.io/badge/LemmaScript-verified-brightgreen)](https://github.com/midspiral/github-star-checker-lemmascript/actions/workflows/lemmascript.yml)
+
+
 A CLI that polls GitHub star counts and reports per-run deltas, with the
 diff arithmetic and its sign-classified decomposition verified in Dafny
 via [LemmaScript](https://github.com/midspiral/LemmaScript). The
