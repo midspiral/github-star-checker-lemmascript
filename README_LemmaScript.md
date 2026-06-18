@@ -1,6 +1,6 @@
 # github-star-checker — Verified with LemmaScript
 
-[![LemmaScript: verified](https://img.shields.io/badge/LemmaScript-verified-brightgreen)](https://github.com/midspiral/github-star-checker-lemmascript/actions/workflows/lemmascript.yml)
+[![LemmaScript verified](https://img.shields.io/github/actions/workflow/status/midspiral/github-star-checker-lemmascript/lemmascript.yml?branch=main&label=LemmaScript%20verified)](https://github.com/midspiral/github-star-checker-lemmascript/actions/workflows/lemmascript.yml)
 
 
 A CLI that polls GitHub star counts and reports per-run deltas, with the
