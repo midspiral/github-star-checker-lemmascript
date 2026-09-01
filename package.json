@@ -8,6 +8,7 @@
   },
   "scripts": {
     "stars": "npx tsx src/cli.ts",
+    "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "gen": "npx tsx ../LemmaScript/tools/src/lsc.ts gen --backend=dafny src/domain.ts",
     "check": "npx tsx ../LemmaScript/tools/src/lsc.ts check --backend=dafny src/domain.ts",

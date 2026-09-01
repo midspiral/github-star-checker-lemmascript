@@ -1,108 +1,30 @@
 #!/usr/bin/env npx tsx
-// Trusted boundary: CLI wrapper for the verified star checker.
-// Handles: argument parsing, GitHub API, state persistence, output formatting.
-// Imports computeDiff / extractIncreases directly from the annotated source —
-// no generated Dafny-JS runtime wrapper, because LemmaScript's Dafny is a
-// verification side-car, not an upstream code-generation target.
+// Trusted boundary: argument parsing, GitHub I/O, cache persistence, output,
+// and macOS notifications. Identity reconciliation lives in domain.ts.
 
 import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { computeDiff, extractIncreases } from './domain.js'
-import type { DiffReport } from './domain.js'
+
+import {
+  loadCache,
+  mergeSnapshots,
+  saveCache,
+  snapshotToStargazers,
+} from './cache.js'
+import type { RepositorySnapshot } from './cache.js'
+import { fetchRepositorySnapshots } from './github.js'
+import {
+  computeRepositoryChange,
+  formatChangeDetails,
+  formatTable,
+  notificationForChanges,
+} from './presentation.js'
+import type { RepositoryChange } from './presentation.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const STATE_FILE = path.resolve(__dirname, '..', '.stars-state.json')
-
-// --- State persistence ---
-
-interface State {
-  counts: Record<string, number>
-  lastRun: string
-}
-
-function loadState(): State {
-  if (fs.existsSync(STATE_FILE)) {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
-  }
-  return { counts: {}, lastRun: '' }
-}
-
-function saveState(state: State): void {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n')
-}
-
-// --- GitHub API ---
-
-async function fetchStarCount(repo: string): Promise<number> {
-  const token = process.env.GITHUB_TOKEN
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'github-star-checker',
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const res = await fetch(`https://api.github.com/repos/${repo}`, { headers })
-  if (!res.ok) {
-    throw new Error(`GitHub API error for ${repo}: ${res.status} ${res.statusText}`)
-  }
-  const data = await res.json() as { stargazers_count: number }
-  return data.stargazers_count
-}
-
-async function fetchAllStarCounts(repos: string[]): Promise<Record<string, number>> {
-  const results = await Promise.all(
-    repos.map(async (repo) => {
-      const count = await fetchStarCount(repo)
-      return [repo, count] as const
-    })
-  )
-  return Object.fromEntries(results)
-}
-
-// --- Output formatting ---
-
-function formatTable(report: DiffReport, repos: string[]): string {
-  const lines: string[] = []
-  const repoWidth = Math.max(30, ...repos.map(r => r.length + 2))
-  const header = 'repo'.padEnd(repoWidth) + 'stars'.padStart(10) + 'new'.padStart(8)
-  const separator = '─'.repeat(header.length)
-
-  lines.push(header)
-  lines.push(separator)
-
-  let totalStars = 0
-  for (const row of report.rows) {
-    const diffStr = row.diff >= 0 ? `+${row.diff}` : `${row.diff}`
-    lines.push(
-      row.repo.padEnd(repoWidth) +
-      row.newCount.toLocaleString().padStart(10) +
-      diffStr.padStart(8)
-    )
-    totalStars += row.newCount
-  }
-
-  lines.push(separator)
-  const diffStr = report.totalDiff >= 0 ? `+${report.totalDiff}` : `${report.totalDiff}`
-  lines.push(
-    'total'.padEnd(repoWidth) +
-    totalStars.toLocaleString().padStart(10) +
-    diffStr.padStart(8)
-  )
-
-  return lines.join('\n')
-}
-
-// --- Notifications (macOS) ---
-// Uses the verified extractIncreases to enumerate per-repo gains. The
-// completeness postcondition guarantees no gainer is silently dropped;
-// soundness guarantees no spurious repo is reported. Arguments pass as an
-// argv array (execFileSync without a shell) so repo names cannot break the
-// command string.
+const CACHE_FILE = path.resolve(__dirname, '..', '.stargazers-cache.json')
 
 function notify(title: string, message: string): void {
   try {
@@ -111,46 +33,48 @@ function notify(title: string, message: string): void {
       '-message', message,
       '-sound', 'default',
     ])
-  } catch (err: any) {
-    console.error(`[notify] failed: ${err?.message ?? err}`)
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error)
+    console.error(`[notify] failed: ${detail}`)
   }
 }
 
-function notifyChanges(report: DiffReport): void {
-  if (report.totalDiff === 0) return
-  const gainers = extractIncreases(report)
-  let message: string
-  if (gainers.length > 0) {
-    message = gainers.map(r => `${r.repo} +${r.diff}`).join(', ')
-  } else {
-    // Drops only — fall back to the aggregate figure.
-    const sign = report.totalDiff > 0 ? '+' : ''
-    message = `${sign}${report.totalDiff} stars`
-  }
-  notify('GitHub Stars', message)
+function changesForSnapshots(
+  repos: string[],
+  snapshots: RepositorySnapshot[],
+  cache: ReturnType<typeof loadCache>,
+): RepositoryChange[] {
+  const snapshotsByRepo = new Map(snapshots.map(snapshot => [snapshot.repo, snapshot]))
+  return repos.map((repo) => {
+    const current = snapshotsByRepo.get(repo)
+    if (current === undefined) throw new Error(`Missing fetched snapshot for ${repo}`)
+    const cached = cache.repositories[repo]
+    const previous = cached === undefined ? undefined : snapshotToStargazers(cached)
+    return computeRepositoryChange(repo, previous, current.stargazers)
+  })
 }
 
-// --- Main ---
+async function runOnce(repos: string[], token: string): Promise<RepositoryChange[]> {
+  const cache = loadCache(CACHE_FILE)
 
-async function runOnce(repos: string[]): Promise<DiffReport> {
-  const state = loadState()
-
-  console.log(`Fetching star counts for ${repos.length} repo(s)...`)
-  const newCounts = await fetchAllStarCounts(repos)
-
-  const report = computeDiff(repos, state.counts, newCounts)
+  console.log(`Fetching stargazers for ${repos.length} repo(s)...`)
+  const snapshots = await fetchRepositorySnapshots(repos, { token })
+  const changes = changesForSnapshots(repos, snapshots, cache)
 
   console.log('')
-  console.log(formatTable(report, repos))
+  console.log(formatTable(changes))
 
-  const newState: State = {
-    counts: { ...state.counts, ...newCounts },
-    lastRun: new Date().toISOString(),
+  const details = formatChangeDetails(changes)
+  if (details.length > 0) {
+    console.log('')
+    console.log(details)
   }
-  saveState(newState)
-  console.log(`\nState saved to ${path.relative(process.cwd(), STATE_FILE)}`)
 
-  return report
+  const updatedAt = new Date().toISOString()
+  saveCache(CACHE_FILE, mergeSnapshots(cache, snapshots, updatedAt))
+  console.log(`\nCache saved to ${path.relative(process.cwd(), CACHE_FILE)}`)
+
+  return changes
 }
 
 function sleep(ms: number): Promise<void> {
@@ -159,43 +83,52 @@ function sleep(ms: number): Promise<void> {
 
 function parseArgs(args: string[]): { repos: string[]; watchMode: boolean; intervalMin: number } {
   let intervalMin = 10
-  const filtered: string[] = []
+  const repos: string[] = []
   let watchMode = false
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--watch') {
       watchMode = true
     } else if (args[i] === '--every' && i + 1 < args.length) {
-      intervalMin = parseInt(args[++i], 10)
-      if (isNaN(intervalMin) || intervalMin < 1) {
-        console.error('--every requires a positive number of minutes')
-        process.exit(1)
+      intervalMin = Number.parseInt(args[++i], 10)
+      if (!Number.isFinite(intervalMin) || intervalMin < 1) {
+        throw new Error('--every requires a positive number of minutes')
       }
     } else {
-      filtered.push(args[i])
+      repos.push(args[i])
     }
   }
 
-  return { repos: filtered, watchMode, intervalMin }
+  return { repos, watchMode, intervalMin }
 }
 
-async function main() {
-  const { repos, watchMode, intervalMin } = parseArgs(process.argv.slice(2))
-
+function validateRepos(repos: string[]): void {
   if (repos.length === 0) {
-    console.error('Usage: stars [--watch [--every N]] owner/repo1 owner/repo2 ...')
-    process.exit(1)
+    throw new Error('Usage: stars [--watch [--every N]] owner/repo1 owner/repo2 ...')
   }
 
+  const seen = new Set<string>()
   for (const repo of repos) {
-    if (!repo.includes('/') || repo.split('/').length !== 2) {
-      console.error(`Invalid repo format: ${repo} (expected owner/repo)`)
-      process.exit(1)
+    const parts = repo.split('/')
+    if (parts.length !== 2 || parts[0].length === 0 || parts[1].length === 0) {
+      throw new Error(`Invalid repo format: ${repo} (expected owner/repo)`)
     }
+    if (seen.has(repo)) throw new Error(`Duplicate repo: ${repo}`)
+    seen.add(repo)
+  }
+}
+
+async function main(): Promise<void> {
+  const { repos, watchMode, intervalMin } = parseArgs(process.argv.slice(2))
+  validateRepos(repos)
+
+  const token = process.env.GITHUB_TOKEN
+  if (token === undefined || token.length === 0) {
+    throw new Error('GITHUB_TOKEN is required to list individual stargazers')
   }
 
   if (!watchMode) {
-    await runOnce(repos)
+    await runOnce(repos, token)
     return
   }
 
@@ -203,10 +136,12 @@ async function main() {
   console.log(`Watch mode: checking every ${intervalMin}min. Press Ctrl+C to stop.\n`)
   while (true) {
     try {
-      const report = await runOnce(repos)
-      notifyChanges(report)
-    } catch (err: any) {
-      console.error(`\nError: ${err.message}\n`)
+      const changes = await runOnce(repos, token)
+      const notification = notificationForChanges(changes)
+      if (notification !== undefined) notify(notification.title, notification.message)
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error)
+      console.error(`\nError: ${detail}\n`)
     }
     const next = new Date(Date.now() + intervalMs)
     console.log(`\nNext check at ${next.toLocaleTimeString()}...\n`)
@@ -214,7 +149,8 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err.message)
+main().catch((error: unknown) => {
+  const detail = error instanceof Error ? error.message : String(error)
+  console.error(detail)
   process.exit(1)
 })

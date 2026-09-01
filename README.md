@@ -1,61 +1,112 @@
 # GitHub Star Checker
 
-A CLI tool that tracks GitHub star counts across repos and computes diffs between runs. Core diff logic is formally verified in Dafny via [LemmaScript](https://github.com/midspiral/LemmaScript). See [README_LemmaScript.md](README_LemmaScript.md) for the verification story.
+A small CLI that remembers the individual GitHub users starring a set of
+repositories and reports who arrived or left since the previous successful
+run. Its identity-diff core is formally verified in Dafny via
+[LemmaScript](https://github.com/midspiral/LemmaScript).
+
+## Requirements
+
+- Node.js 18 or newer.
+- `GITHUB_TOKEN` with access to every repository being checked. GitHub now
+  restricts stargazer listings to repository admins and collaborators.
+- `terminal-notifier` for macOS watch-mode notifications (optional).
 
 ## Usage
 
-```
+The command line is unchanged:
+
+```sh
 npm run stars -- owner/repo1 owner/repo2 ...
+npm run stars -- --watch --every 10 owner/repo1 owner/repo2 ...
 ```
 
-Set `GITHUB_TOKEN` for higher rate limits (optional).
+Pass the complete group of repositories you want to check in one invocation.
+The first successful observation of a repository establishes a quiet baseline.
+Later runs retain the aggregate table and add the complete identity change list:
 
-## Example
-
-```
-$ npm run stars -- dafny-lang/dafny Z3Prover/z3
-
+```text
 repo                               stars     new
 ────────────────────────────────────────────────
-dafny-lang/dafny                   3,375      +0
-Z3Prover/z3                       12,005      +0
+owner/one                            125      +0
+owner/two                             42      +1
 ────────────────────────────────────────────────
-total                             15,380      +0
+total                                167      +1
 
-State saved to .stars-state.json
+owner/one
+  new:  @alice
+  lost: @bob
+owner/two
+  new:  @carol
 ```
 
-Use `--watch [--every N]` for repeated polling with a macOS desktop notification listing which repos gained stars.
+Zero-net changes are still reported: one new user and one lost user produces
+`+0` in the table but both names in the details and notification.
+
+## Snapshot cache
+
+State is only a versioned `.stargazers-cache.json` file. Each repository stores
+its last complete snapshot, keyed by the user's immutable GitHub node ID:
+
+```json
+{
+  "version": 1,
+  "updatedAt": "2026-08-27T14:30:00.000Z",
+  "repositories": {
+    "owner/repo": {
+      "fetchedAt": "2026-08-27T14:30:00.000Z",
+      "stargazers": {
+        "MDQ6VXNlcjE=": {
+          "login": "alice",
+          "starredAt": "2026-08-25T10:15:00Z"
+        }
+      }
+    }
+  }
+}
+```
+
+Logins are display data, so a username change is not misreported as one lost
+and one new user. Repositories not included in a run remain in the cache.
+
+The CLI fetches every paginated stargazer page and checks the result against
+GitHub's count before atomically replacing the cache. If the listing is
+restricted, partial, or changes during pagination, the cache is left untouched.
+All requested repositories form one update: one failure prevents the batch from
+being saved.
+
+Because this is a single-snapshot cache, reports mean “since the previous
+successful run.” There is no historical event database.
+
+## Notifications
+
+Watch mode sends notifications such as:
+
+```text
+GitHub Stars · +3 / -1
+owner/repo: +@alice, +@bob; -@carol · other/repo: +@dana
+```
+
+Long notifications show a bounded set of names and summarize the remainder;
+the CLI output is never truncated.
 
 ## Architecture
 
+```text
+src/domain.ts        verified immutable-ID snapshot reconciliation
+src/github.ts        paginated GitHub API client and consistency checks
+src/cache.ts         JSON validation, merging, and atomic persistence
+src/presentation.ts  aggregate table, identity details, notifications
+src/cli.ts           arguments, watch loop, orchestration, trusted I/O
 ```
-src/cli.ts       Trusted boundary (GitHub API, state persistence, output, notifications)
-src/domain.ts    Annotated TS: computeDiff, extractIncreases / extractDecreases /
-                 extractUnchanged, decompose (conservation theorem), pure helpers
-src/domain.dfy   Generated Dafny + proof additions (SumDiffs_append, partition
-                 lemmas, sumDiffs↔sumDiffsUpTo bridge, witness hints)
+
+See [README_LemmaScript.md](README_LemmaScript.md) for the verification story.
+
+## Development
+
+```sh
+npm install
+npm run typecheck
+npm test
+npm run check
 ```
-
-## Verified properties
-
-Diff report shape:
-- Each `DiffRow` has `diff === newCount - oldCount`.
-- Rows line up with the input repos by index.
-- Each row's counts match the input maps (`newCount === newCounts[repos[i]]`, `oldCount === (repos[i] in oldCounts ? oldCounts[repos[i]] : 0)`).
-- `report.totalDiff === sumDiffs(rows)` — total equals the per-row sum, via `SumDiffs_append`.
-
-Sign-classified extractors (`extractIncreases`, `extractDecreases`, `extractUnchanged`):
-- **Length bound:** `|\result| <= |report.rows|` — nothing is invented.
-- **Count equality:** `|\result| === countPositiveUpTo(report.rows, |rows|)` (analogous for the other two).
-- **Sum equality:** `sumDiffs(\result) === sumPositiveUpTo(report.rows, |rows|)` for ±; `sumDiffs(unchanged) === 0` by soundness.
-- **Soundness:** every output row has the expected sign.
-- **Completeness:** every input row with the expected sign appears in the output.
-- **Ordered completeness:** gainers appear in the notification in the same order they were listed on the command line — e.g. `stars foo/A foo/B foo/C` with gains on A and C produces `"foo/A +N, foo/C +M"`, never the reverse.
-
-Conservation / partition (`decompose`):
-- `|increases| + |decreases| + |unchanged| === |report.rows|` — every row is in exactly one class.
-- `sumDiffs(increases) + sumDiffs(decreases) === report.totalDiff` — the non-trivial sums account for the whole delta.
-- `sumDiffs(unchanged) === 0`.
-
-**33 Dafny verification conditions, 0 errors.**
