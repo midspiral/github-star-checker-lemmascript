@@ -86,7 +86,10 @@ export function formatChangeDetails(changes: RepositoryChange[]): string {
   const lines: string[] = []
   for (const change of changes) {
     if (change.added.length === 0 && change.removed.length === 0) continue
-    lines.push(change.repo)
+    const counts: string[] = []
+    if (change.added.length > 0) counts.push(`+${change.added.length}`)
+    if (change.removed.length > 0) counts.push(`-${change.removed.length}`)
+    lines.push(`${change.repo} (${counts.join(' ')}/${change.newCount})`)
     if (change.added.length > 0) lines.push(`  new:  ${logins(change.added)}`)
     if (change.removed.length > 0) lines.push(`  lost: ${logins(change.removed)}`)
   }

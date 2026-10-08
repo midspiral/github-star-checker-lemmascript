@@ -29,7 +29,7 @@ test('console and notification display both sides of zero-net churn', () => {
     [star('U2', 'bob')],
   )
 
-  assert.equal(formatChangeDetails([change]), 'owner/repo\n  new:  @bob\n  lost: @alice')
+  assert.equal(formatChangeDetails([change]), 'owner/repo (+1 -1/1)\n  new:  @bob\n  lost: @alice')
   assert.deepEqual(notificationForChanges([change]), {
     title: 'GitHub Stars · +1 / -1',
     message: 'owner/repo: +@bob; -@alice',
