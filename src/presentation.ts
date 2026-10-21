@@ -1,64 +1,5 @@
-import { diffStargazers } from './domain.js'
-import type { Stargazer } from './domain.js'
-
-// One observation of a repository. `stargazers` is undefined when GitHub only
-// exposes the aggregate count to this token.
-export interface Observation {
-  count: number
-  stargazers: Stargazer[] | undefined
-}
-
-export interface RepositoryChange {
-  repo: string
-  baseline: boolean
-  // Whether `added` and `removed` are known; otherwise only the counts are.
-  detailed: boolean
-  oldCount: number
-  newCount: number
-  added: Stargazer[]
-  removed: Stargazer[]
-}
-
-export function computeRepositoryChange(
-  repo: string,
-  previous: Observation | undefined,
-  current: Observation,
-): RepositoryChange {
-  if (previous === undefined) {
-    return {
-      repo,
-      baseline: true,
-      detailed: current.stargazers !== undefined,
-      oldCount: current.count,
-      newCount: current.count,
-      added: [],
-      removed: [],
-    }
-  }
-
-  if (previous.stargazers === undefined || current.stargazers === undefined) {
-    return {
-      repo,
-      baseline: false,
-      detailed: false,
-      oldCount: previous.count,
-      newCount: current.count,
-      added: [],
-      removed: [],
-    }
-  }
-
-  const diff = diffStargazers(previous.stargazers, current.stargazers)
-  return {
-    repo,
-    baseline: false,
-    detailed: true,
-    oldCount: previous.count,
-    newCount: current.count,
-    added: diff.added,
-    removed: diff.removed,
-  }
-}
+import { addedTotal, netTotal, removedTotal } from './domain.js'
+import type { RepositoryChange, Stargazer } from './domain.js'
 
 function netChange(change: RepositoryChange): number {
   return change.newCount - change.oldCount
@@ -85,23 +26,20 @@ export function formatTable(changes: RepositoryChange[]): string {
   lines.push(header, separator)
 
   let totalStars = 0
-  let totalDiff = 0
   for (const change of changes) {
-    const diff = netChange(change)
     lines.push(
       tableLabel(change).padEnd(repoWidth)
       + change.newCount.toLocaleString().padStart(10)
-      + signed(diff).padStart(8),
+      + signed(netChange(change)).padStart(8),
     )
     totalStars += change.newCount
-    totalDiff += diff
   }
 
   lines.push(separator)
   lines.push(
     'total'.padEnd(repoWidth)
     + totalStars.toLocaleString().padStart(10)
-    + signed(totalDiff).padStart(8),
+    + signed(netTotal(changes)).padStart(8),
   )
 
   return lines.join('\n')
@@ -152,11 +90,6 @@ export function notificationForChanges(
     change.added.length > 0 || change.removed.length > 0 || hasCountOnlyChange(change))
   if (changed.length === 0) return undefined
 
-  // Count-only repositories contribute their net change to one side.
-  const totalAdded = changed.reduce((total, change) =>
-    total + (change.detailed ? change.added.length : Math.max(netChange(change), 0)), 0)
-  const totalRemoved = changed.reduce((total, change) =>
-    total + (change.detailed ? change.removed.length : Math.max(-netChange(change), 0)), 0)
   const visibleRepositories = changed.slice(0, 3)
   const sections = visibleRepositories.map((change) => {
     if (!change.detailed) return `${change.repo}: ${signed(netChange(change))}`
@@ -170,7 +103,8 @@ export function notificationForChanges(
   }
 
   return {
-    title: `GitHub Stars · +${totalAdded} / -${totalRemoved}`,
+    // Verified: these net to the table's total (`netTotal`).
+    title: `GitHub Stars · +${addedTotal(changes)} / -${removedTotal(changes)}`,
     message: sections.join(' · '),
   }
 }

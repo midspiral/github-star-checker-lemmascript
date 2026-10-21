@@ -13,14 +13,15 @@ import {
   snapshotToStargazers,
 } from './cache.js'
 import type { RepositorySnapshot } from './cache.js'
+import type { Stargazer } from './domain.js'
 import { fetchRepositorySnapshots } from './github.js'
+import { computeRepositoryChange } from './domain.js'
+import type { Observation, RepositoryChange } from './domain.js'
 import {
-  computeRepositoryChange,
   formatChangeDetails,
   formatTable,
   notificationForChanges,
 } from './presentation.js'
-import type { RepositoryChange } from './presentation.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,6 +40,12 @@ function notify(title: string, message: string): void {
   }
 }
 
+function observation(count: number, stargazers: Stargazer[] | undefined): Observation {
+  return stargazers === undefined
+    ? { kind: 'counted', count }
+    : { kind: 'listed', stargazers }
+}
+
 function changesForSnapshots(
   repos: string[],
   snapshots: RepositorySnapshot[],
@@ -51,8 +58,8 @@ function changesForSnapshots(
     const cached = cache.repositories[repo]
     const previous = cached === undefined
       ? undefined
-      : { count: cached.count, stargazers: snapshotToStargazers(cached) }
-    return computeRepositoryChange(repo, previous, current)
+      : observation(cached.count, snapshotToStargazers(cached))
+    return computeRepositoryChange(repo, previous, observation(current.count, current.stargazers))
   })
 }
 

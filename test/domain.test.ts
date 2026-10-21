@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { diffStargazers } from '../src/domain.js'
+import {
+  addedTotal,
+  computeRepositoryChange,
+  diffStargazers,
+  netTotal,
+  removedTotal,
+} from '../src/domain.js'
 import type { Stargazer } from '../src/domain.js'
 
 function star(id: string, login: string): Stargazer {
@@ -30,4 +36,19 @@ test('zero-net churn still reports both identities', () => {
 
   assert.deepEqual(result.added.map(user => user.login), ['bob'])
   assert.deepEqual(result.removed.map(user => user.login), ['alice'])
+})
+
+test('arrivals minus departures equal the net total across mixed repositories', () => {
+  const changes = [
+    computeRepositoryChange('a/listed', { kind: 'listed', stargazers: [star('U1', 'alice')] },
+      { kind: 'listed', stargazers: [star('U2', 'bob'), star('U3', 'carol')] }),
+    computeRepositoryChange('b/counted', { kind: 'counted', count: 10 }, { kind: 'counted', count: 7 }),
+    computeRepositoryChange('c/lost-access', { kind: 'listed', stargazers: [star('U1', 'alice')] },
+      { kind: 'counted', count: 4 }),
+  ]
+
+  assert.deepEqual(changes.map(change => change.detailed), [true, false, false])
+  assert.equal(addedTotal(changes), 2 + 0 + 3)
+  assert.equal(removedTotal(changes), 1 + 3 + 0)
+  assert.equal(netTotal(changes), addedTotal(changes) - removedTotal(changes))
 })

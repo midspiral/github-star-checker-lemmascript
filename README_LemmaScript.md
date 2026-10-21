@@ -13,24 +13,43 @@ compares immutable GitHub user IDs between runs. The TypeScript in
 - `added`: current stargazers whose immutable IDs were absent previously.
 - `removed`: previous stargazers whose immutable IDs are absent currently.
 
-Its four postconditions establish both directions for both results:
+Given snapshots whose IDs are each distinct, its postconditions establish:
 
 - Soundness/provenance: every returned addition comes from `current`, every
   removal comes from `previous`, and the user's ID is absent from the opposite
   snapshot.
 - Completeness: every current user absent from `previous` appears in `added`,
   and every previous user absent from `current` appears in `removed`.
+- Accounting: `current.length - previous.length` equals
+  `added.length - removed.length`, so the table's count change always agrees
+  with the names listed.
+
+`computeRepositoryChange(repo, previous, current)` compares observations that
+are either a complete listing or, when GitHub will not list stargazers to the
+token, only a count. It proves that:
+
+- a first observation is a silent baseline;
+- a change carries names exactly when both observations are listings, and then
+  they are the identity diff above;
+- a count-only change never names anyone;
+- whenever names are reported, the net count change equals added minus removed.
+
+`netTotal(changes)`, the table's total, provably equals
+`addedTotal(changes) - removedTotal(changes)`, the arrivals and departures in a
+notification's title. Count-only repositories contribute their net change to
+one side.
 
 The implementation builds ID sets for linear-time reconciliation. Dafny loop
-invariants connect each set to the processed snapshot prefix and carry result
-soundness and completeness through the two output loops. `containsId` is a pure
-recursive specification function.
+invariants connect each set to the processed snapshot prefix, track ghost sets
+of added and removed IDs, and carry soundness, completeness, and set sizes
+through the loops. One handwritten lemma, `IdAccounting`, turns those set sizes
+into the accounting identity.
 
-Runtime input validation separately ensures that GitHub snapshots have unique
-IDs and agree with the repository's stargazer count. Repositories whose
-stargazers GitHub will not list fall back to a plain count difference, which
-lives in the trusted presentation layer and does not use the verified core. API fetching, cache I/O,
-formatting, and notifications remain explicitly inside the trusted boundary.
+The distinct-ID precondition is established at the trusted boundary: the
+GitHub client deduplicates by node ID and rejects listings whose unique size
+differs from the reported count, and cached listings are keyed by ID. API
+fetching, cache I/O, formatting, and notifications remain explicitly inside the
+trusted boundary.
 
 ## Files
 
@@ -44,8 +63,8 @@ src/presentation.ts trusted display boundary
 src/cli.ts          trusted orchestration boundary
 ```
 
-The current `domain.dfy` needs no handwritten proof additions and therefore
-matches `domain.dfy.gen` exactly.
+`domain.dfy` differs from `domain.dfy.gen` only by the `IdAccounting` lemma
+and its call at the end of `diffStargazers`.
 
 ## Verification
 

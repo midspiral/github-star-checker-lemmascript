@@ -1,25 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { computeRepositoryChange } from '../src/domain.js'
+import type { Observation, Stargazer } from '../src/domain.js'
 import {
-  computeRepositoryChange,
   formatChangeDetails,
   formatTable,
   notificationForChanges,
 } from '../src/presentation.js'
-import type { Observation } from '../src/presentation.js'
-import type { Stargazer } from '../src/domain.js'
 
 function star(id: string, login: string): Stargazer {
   return { id, login, starredAt: '2026-08-27T12:00:00Z' }
 }
 
 function listed(...stargazers: Stargazer[]): Observation {
-  return { count: stargazers.length, stargazers }
+  return { kind: 'listed', stargazers }
 }
 
 function counted(count: number): Observation {
-  return { count, stargazers: undefined }
+  return { kind: 'counted', count }
 }
 
 test('a first observation is a silent baseline', () => {

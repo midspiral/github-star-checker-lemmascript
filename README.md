@@ -124,7 +124,7 @@ the CLI output is never truncated.
 ## Architecture
 
 ```text
-src/domain.ts        verified immutable-ID snapshot reconciliation
+src/domain.ts        verified identity diff, count-only fallback, and totals
 src/github.ts        paginated GitHub API client and consistency checks
 src/cache.ts         JSON validation, merging, and atomic persistence
 src/presentation.ts  aggregate table, identity details, notifications
