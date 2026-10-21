@@ -47,18 +47,16 @@ Zero-net changes are still reported: one new user and one lost user produces
 
 When the token cannot list a repository's stargazers (GitHub answers 404, or
 an empty list for a non-empty repository), that repository falls back to its
-aggregate `stargazers_count`. It is marked in the table and reports only its
-net change:
+aggregate `stargazers_count`. It is marked `(count)` in the table and reports
+only its net change:
 
 ```text
 repo                               stars     new
 ────────────────────────────────────────────────
 owner/one                            125      +1
-other/repo*                           21      +2
+other/repo (count)                    21      +2
 ────────────────────────────────────────────────
 total                                146      +3
-
-* count only: GitHub does not list these stargazers to this token
 
 owner/one (+1/125)
   new:  @alice

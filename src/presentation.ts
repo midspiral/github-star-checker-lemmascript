@@ -72,11 +72,13 @@ function hasCountOnlyChange(change: RepositoryChange): boolean {
   return !change.detailed && netChange(change) !== 0
 }
 
-const COUNT_ONLY_MARK = '*'
+function tableLabel(change: RepositoryChange): string {
+  return change.detailed ? change.repo : `${change.repo} (count)`
+}
 
 export function formatTable(changes: RepositoryChange[]): string {
   const lines: string[] = []
-  const repoWidth = Math.max(30, ...changes.map(change => change.repo.length + 3))
+  const repoWidth = Math.max(30, ...changes.map(change => tableLabel(change).length + 2))
   const header = 'repo'.padEnd(repoWidth) + 'stars'.padStart(10) + 'new'.padStart(8)
   const separator = '─'.repeat(header.length)
 
@@ -86,9 +88,8 @@ export function formatTable(changes: RepositoryChange[]): string {
   let totalDiff = 0
   for (const change of changes) {
     const diff = netChange(change)
-    const label = change.detailed ? change.repo : `${change.repo}${COUNT_ONLY_MARK}`
     lines.push(
-      label.padEnd(repoWidth)
+      tableLabel(change).padEnd(repoWidth)
       + change.newCount.toLocaleString().padStart(10)
       + signed(diff).padStart(8),
     )
@@ -102,10 +103,6 @@ export function formatTable(changes: RepositoryChange[]): string {
     + totalStars.toLocaleString().padStart(10)
     + signed(totalDiff).padStart(8),
   )
-
-  if (changes.some(change => !change.detailed)) {
-    lines.push('', `${COUNT_ONLY_MARK} count only: GitHub does not list these stargazers to this token`)
-  }
 
   return lines.join('\n')
 }

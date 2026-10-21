@@ -52,9 +52,8 @@ test('count-only repositories report their net change without names', () => {
   ]
 
   assert.equal(changes[1].detailed, false)
-  assert.match(formatTable(changes), /other\/counted\*\s+21\s+\+2/)
+  assert.match(formatTable(changes), /other\/counted \(count\)\s+21\s+\+2/)
   assert.match(formatTable(changes), /total\s+23\s+\+3/)
-  assert.match(formatTable(changes), /\* count only/)
   assert.equal(
     formatChangeDetails(changes),
     'owner/listed (+1/2)\n  new:  @bob\nother/counted (+2/21, names unavailable)',
@@ -70,9 +69,4 @@ test('losing listing access falls back to counts for that run', () => {
 
   assert.equal(change.detailed, false)
   assert.equal(formatChangeDetails([change]), 'owner/repo (+2/3, names unavailable)')
-})
-
-test('a detailed table has no count-only footnote', () => {
-  const change = computeRepositoryChange('owner/repo', undefined, listed(star('U1', 'alice')))
-  assert.doesNotMatch(formatTable([change]), /count only/)
 })
