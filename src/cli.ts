@@ -49,8 +49,10 @@ function changesForSnapshots(
     const current = snapshotsByRepo.get(repo)
     if (current === undefined) throw new Error(`Missing fetched snapshot for ${repo}`)
     const cached = cache.repositories[repo]
-    const previous = cached === undefined ? undefined : snapshotToStargazers(cached)
-    return computeRepositoryChange(repo, previous, current.stargazers)
+    const previous = cached === undefined
+      ? undefined
+      : { count: cached.count, stargazers: snapshotToStargazers(cached) }
+    return computeRepositoryChange(repo, previous, current)
   })
 }
 

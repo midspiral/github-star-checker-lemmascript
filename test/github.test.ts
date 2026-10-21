@@ -47,25 +47,52 @@ test('fetchRepositorySnapshot follows pagination and validates the count', async
   assert.equal(requests[3].url, 'https://api.github.com/repos/owner/repo')
   assert.equal(requests[1].accept, 'application/vnd.github.star+json')
   assert.equal(snapshot.fetchedAt, '2026-08-27T14:00:00.000Z')
-  assert.deepEqual(snapshot.stargazers.map(user => user.login), ['alice', 'bob'])
+  assert.equal(snapshot.count, 2)
+  assert.deepEqual(snapshot.stargazers?.map(user => user.login), ['alice', 'bob'])
 })
 
-test('an empty restricted listing is never interpreted as everybody leaving', async () => {
-  const queue = [
+async function snapshotFrom(queue: Response[]) {
+  const snapshot = await fetchRepositorySnapshot('owner/repo', {
+    token: 'test-token',
+    fetchImplementation: async () => {
+      const response = queue.shift()
+      if (response === undefined) throw new Error('Unexpected request')
+      return response
+    },
+  })
+  assert.equal(queue.length, 0)
+  return snapshot
+}
+
+test('a restricted listing falls back to the aggregate count', async () => {
+  const snapshot = await snapshotFrom([
+    jsonResponse({ stargazers_count: 21 }),
+    new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 }),
+  ])
+
+  assert.equal(snapshot.count, 21)
+  assert.equal(snapshot.stargazers, undefined)
+})
+
+test('an empty listing is never interpreted as everybody leaving', async () => {
+  const snapshot = await snapshotFrom([
     jsonResponse({ stargazers_count: 2 }),
     jsonResponse([]),
-    jsonResponse({ stargazers_count: 2 }),
-  ]
+  ])
 
+  assert.equal(snapshot.count, 2)
+  assert.equal(snapshot.stargazers, undefined)
+})
+
+test('a missing later page is an error, not a restricted listing', async () => {
   await assert.rejects(
-    fetchRepositorySnapshot('owner/repo', {
-      token: 'test-token',
-      fetchImplementation: async () => {
-        const response = queue.shift()
-        if (response === undefined) throw new Error('Unexpected request')
-        return response
-      },
-    }),
-    /token may lack admin or collaborator access/,
+    snapshotFrom([
+      jsonResponse({ stargazers_count: 2 }),
+      jsonResponse([githubStar('U1', 'alice')], {
+        link: '<https://api.github.com/repos/owner/repo/stargazers?per_page=100&page=2>; rel="next"',
+      }),
+      new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 }),
+    ]),
+    /404 Not Found/,
   )
 })

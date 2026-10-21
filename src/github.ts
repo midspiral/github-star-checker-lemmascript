@@ -135,7 +135,7 @@ async function fetchAllStargazers(
   repo: string,
   token: string,
   fetchImplementation: FetchImplementation,
-): Promise<{ itemCount: number; stargazers: Stargazer[] }> {
+): Promise<{ itemCount: number; stargazers: Stargazer[] } | 'restricted'> {
   let url: string | undefined = `${API_ROOT}/repos/${repositoryPath(repo)}/stargazers?per_page=100`
   let itemCount = 0
   const stargazers = new Map<string, Stargazer>()
@@ -144,6 +144,9 @@ async function fetchAllStargazers(
     const response = await fetchImplementation(url, {
       headers: headers(token, 'application/vnd.github.star+json'),
     })
+    // GitHub answers 404 for the listing of a repository whose metadata we
+    // just read when the token lacks admin or collaborator access.
+    if (response.status === 404 && itemCount === 0) return 'restricted'
     if (!response.ok) await throwResponseError(response, repo, 'listing stargazers')
 
     const page = parseStars(await response.json(), repo)
@@ -180,15 +183,20 @@ export async function fetchRepositorySnapshot(
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const countBefore = await fetchCount(repo, options.token, fetchImplementation)
     const listing = await fetchAllStargazers(repo, options.token, fetchImplementation)
-    const countAfter = await fetchCount(repo, options.token, fetchImplementation)
 
-    if (listing.itemCount === 0 && countBefore > 0 && countBefore === countAfter) {
-      throw new Error(
-        `GitHub returned an empty stargazer list for non-empty ${repo}; `
-        + 'the token may lack admin or collaborator access. The cache was not changed.',
-      )
+    // Without individual stargazers, fall back to the aggregate count. An
+    // empty listing for a non-empty repository is treated the same way so it
+    // is never interpreted as everybody leaving.
+    if (listing === 'restricted' || (listing.itemCount === 0 && countBefore > 0)) {
+      return {
+        repo,
+        fetchedAt: now().toISOString(),
+        count: countBefore,
+        stargazers: undefined,
+      }
     }
 
+    const countAfter = await fetchCount(repo, options.token, fetchImplementation)
     if (
       countBefore === countAfter
       && listing.itemCount === countAfter
@@ -197,6 +205,7 @@ export async function fetchRepositorySnapshot(
       return {
         repo,
         fetchedAt: now().toISOString(),
+        count: countAfter,
         stargazers: listing.stargazers,
       }
     }

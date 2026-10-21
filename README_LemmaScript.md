@@ -27,7 +27,9 @@ soundness and completeness through the two output loops. `containsId` is a pure
 recursive specification function.
 
 Runtime input validation separately ensures that GitHub snapshots have unique
-IDs and agree with the repository's stargazer count. API fetching, cache I/O,
+IDs and agree with the repository's stargazer count. Repositories whose
+stargazers GitHub will not list fall back to a plain count difference, which
+lives in the trusted presentation layer and does not use the verified core. API fetching, cache I/O,
 formatting, and notifications remain explicitly inside the trusted boundary.
 
 ## Files

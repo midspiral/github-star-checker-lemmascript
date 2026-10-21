@@ -8,8 +8,8 @@ run. Its identity-diff core is formally verified in Dafny via
 ## Requirements
 
 - Node.js 18 or newer.
-- `GITHUB_TOKEN` with access to every repository being checked. GitHub now
-  restricts stargazer listings to repository admins and collaborators.
+- `GITHUB_TOKEN`. GitHub restricts stargazer listings to repository admins
+  and collaborators; other repositories are tracked by count only (see below).
 - `terminal-notifier` for macOS watch-mode notifications (optional).
 
 ## Usage
@@ -43,18 +43,50 @@ owner/two
 Zero-net changes are still reported: one new user and one lost user produces
 `+0` in the table but both names in the details and notification.
 
+## Count-only repositories
+
+When the token cannot list a repository's stargazers (GitHub answers 404, or
+an empty list for a non-empty repository), that repository falls back to its
+aggregate `stargazers_count`. It is marked in the table and reports only its
+net change:
+
+```text
+repo                               stars     new
+────────────────────────────────────────────────
+owner/one                            125      +1
+other/repo*                           21      +2
+────────────────────────────────────────────────
+total                                146      +3
+
+* count only: GitHub does not list these stargazers to this token
+
+owner/one (+1/125)
+  new:  @alice
+other/repo (+2/21, names unavailable)
+```
+
+The choice is made on every run, so a repository switches to names as soon as
+the token gains access; that first listing is a baseline for names, while its
+count change is still reported. Count-only tracking cannot see zero-net churn.
+
 ## Snapshot cache
 
 State is only a versioned `.stargazers-cache.json` file. Each repository stores
-its last complete snapshot, keyed by the user's immutable GitHub node ID:
+its count and, when available, its last complete snapshot keyed by the user's
+immutable GitHub node ID:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "updatedAt": "2026-08-27T14:30:00.000Z",
   "repositories": {
+    "other/repo": {
+      "fetchedAt": "2026-08-27T14:30:00.000Z",
+      "count": 21
+    },
     "owner/repo": {
       "fetchedAt": "2026-08-27T14:30:00.000Z",
+      "count": 1,
       "stargazers": {
         "MDQ6VXNlcjE=": {
           "login": "alice",
@@ -68,10 +100,11 @@ its last complete snapshot, keyed by the user's immutable GitHub node ID:
 
 Logins are display data, so a username change is not misreported as one lost
 and one new user. Repositories not included in a run remain in the cache.
+Version 1 caches are migrated on load.
 
 The CLI fetches every paginated stargazer page and checks the result against
 GitHub's count before atomically replacing the cache. If the listing is
-restricted, partial, or changes during pagination, the cache is left untouched.
+partial or changes during pagination, the cache is left untouched.
 All requested repositories form one update: one failure prevents the batch from
 being saved.
 
@@ -83,8 +116,8 @@ successful run.” There is no historical event database.
 Watch mode sends notifications such as:
 
 ```text
-GitHub Stars · +3 / -1
-owner/repo: +@alice, +@bob; -@carol · other/repo: +@dana
+GitHub Stars · +4 / -1
+owner/repo: +@alice, +@bob; -@carol · other/repo: +@dana · counted/repo: +1
 ```
 
 Long notifications show a bounded set of names and summarize the remainder;
