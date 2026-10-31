@@ -110,7 +110,6 @@ export function computeDiff(
   let total = 0
   let idx = 0
   while (idx < repos.length) {
-    //@ type idx nat
     //@ invariant idx <= repos.length
     //@ invariant rows.length === idx
     //@ invariant forall(i: nat, i < rows.length ==> rows[i].repo === repos[i])
@@ -152,7 +151,6 @@ export function extractIncreases(report: DiffReport): DiffRow[] {
   let out: DiffRow[] = []
   let i = 0
   while (i < report.rows.length) {
-    //@ type i nat
     //@ invariant i <= report.rows.length
     //@ invariant out.length <= i
     //@ invariant out.length === countPositiveUpTo(report.rows, i)
@@ -181,7 +179,6 @@ export function extractDecreases(report: DiffReport): DiffRow[] {
   let out: DiffRow[] = []
   let i = 0
   while (i < report.rows.length) {
-    //@ type i nat
     //@ invariant i <= report.rows.length
     //@ invariant out.length <= i
     //@ invariant out.length === countNegativeUpTo(report.rows, i)
@@ -235,7 +232,6 @@ export function extractUnchanged(report: DiffReport): DiffRow[] {
   let out: DiffRow[] = []
   let i = 0
   while (i < report.rows.length) {
-    //@ type i nat
     //@ invariant i <= report.rows.length
     //@ invariant out.length <= i
     //@ invariant out.length === countZeroUpTo(report.rows, i)
