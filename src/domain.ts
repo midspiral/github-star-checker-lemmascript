@@ -86,7 +86,6 @@ export function diffStargazers(
   const previousIds = new Set<string>()
   let p = 0
   while (p < previous.length) {
-    //@ type p nat
     //@ invariant p <= previous.length
     //@ invariant forall(k: nat, k < p ==> previousIds.has(previous[k].id))
     //@ invariant forall(id: string, previousIds.has(id) ==> exists(k: nat, k < p && previous[k].id === id))
@@ -99,7 +98,6 @@ export function diffStargazers(
   const currentIds = new Set<string>()
   let c = 0
   while (c < current.length) {
-    //@ type c nat
     //@ invariant c <= current.length
     //@ invariant forall(k: nat, k < c ==> currentIds.has(current[k].id))
     //@ invariant forall(id: string, currentIds.has(id) ==> exists(k: nat, k < c && current[k].id === id))
@@ -113,7 +111,6 @@ export function diffStargazers(
   //@ ghost let addedIds = new Set<string>()
   let i = 0
   while (i < current.length) {
-    //@ type i nat
     //@ invariant i <= current.length
     //@ invariant forall(j: nat, j < added.length ==> current.includes(added[j]) && !containsId(previous, added[j].id))
     //@ invariant forall(k: nat, k < i && !containsId(previous, current[k].id) ==> added.includes(current[k]))
@@ -132,7 +129,6 @@ export function diffStargazers(
   //@ ghost let removedIds = new Set<string>()
   let r = 0
   while (r < previous.length) {
-    //@ type r nat
     //@ invariant r <= previous.length
     //@ invariant forall(j: nat, j < removed.length ==> previous.includes(removed[j]) && !containsId(current, removed[j].id))
     //@ invariant forall(k: nat, k < r && !containsId(current, previous[k].id) ==> removed.includes(previous[k]))
